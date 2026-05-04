@@ -22,7 +22,7 @@ You are acting as the **Senior Full-Stack Engineer + Architect** for MCG Career 
 
 **Org:** MCG Career College (parent: family-owned multi-entity edu group). Multi-campus: Calgary, Red Deer, Cold Lake, Edmonton. Sister entities: InFocus Film School, CollegeAdmissions.ca, CGA Medical Imaging.
 
-**Why this exists:** Replace the patchwork of spreadsheets, ampEducator exports, and manual coordinator follow-ups with a single event-driven system that catches at-risk students earlier, reduces registration-to-start leakage, and gives leadership real-time KPI visibility.
+**Why this exists:** Replace the patchwork of spreadsheets, CampusLogin exports, and manual coordinator follow-ups with a single event-driven system that catches at-risk students earlier, reduces registration-to-start leakage, and gives leadership real-time KPI visibility.
 
 **Primary users (RBAC personas):**
 1. **Student Services Rep** — daily operator: handles outreach, intake, surveys, engagement.
@@ -32,19 +32,20 @@ You are acting as the **Senior Full-Stack Engineer + Architect** for MCG Career 
 5. **Read-Only Auditor** — compliance / PTIB-style external review.
 
 **Integrations already in our stack (must be hooked or stubbed with adapter pattern):**
-- **ampEducator** (SIS — students, programs, attendance, grades)
+- **CampusLogin** (current SIS — students, programs, attendance, grades) — *MCG's current system of record*
+- **Salesforce** (planned future SIS + institutional CRM — migration target from CampusLogin)
 - **Moodle** (LMS — enrollment + activity)
-- **HubSpot** (lead → student conversion)
-- **Salesforce** (institutional CRM)
+- **PandaDoc** (signed enrollment / accommodation / re-entry documents)
+- **BigBlueButton (BBB)** (live-class attendance — primary attendance source)
 - **JustCall** (CTI — calls/SMS logging)
 - **Twilio** (programmatic SMS)
 - **Google Workspace** (calendar, gmail for staff, docs)
-- **PandaDoc** (signed documents — read-only ref here)
-- **BigBlueButton (BBB)** (live-class attendance)
 - **Claude API** (Anthropic) — for predictive risk + AI-assisted nudges
 - **FAL.ai** — only if visual generation needed (newsletters, etc.)
 
-> **Adapter rule:** Every external integration is implemented behind an `IIntegrationAdapter` interface in `/src/integrations/`. Build real ampEducator + Moodle + Twilio + Claude in MVP; stub the rest with mock adapters returning fixture data, but the calling code must not know the difference.
+> **Critical architecture note — SIS abstraction:** MCG is currently on **CampusLogin** but plans to migrate to **Salesforce** as the system of record. The SIS adapter (`ISisAdapter`) MUST be designed so that swapping `CampusLoginAdapter` → `SalesforceAdapter` requires zero changes in calling code. All SIS reads/writes go through the interface. Build `CampusLoginAdapter` for MVP, scaffold `SalesforceAdapter` skeleton, document the field-mapping diff in `/docs/SIS_MIGRATION.md`.
+
+> **Adapter rule:** Every external integration is implemented behind an `IIntegrationAdapter` interface in `/src/integrations/`. Build real **CampusLogin + Moodle + BBB + Twilio + Claude** in MVP; stub the rest (Salesforce, PandaDoc, JustCall, Google Workspace, FAL.ai) with mock adapters returning fixture data, but the calling code must not know the difference.
 
 ---
 
@@ -124,7 +125,8 @@ You are acting as the **Senior Full-Stack Engineer + Architect** for MCG Career 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | Internal |
-| `student_external_id` | string unique | ampEducator ID — primary lookup |
+| `student_external_id` | string unique | SIS ID (CampusLogin currently, Salesforce post-migration) — primary lookup |
+| `sis_source` | enum | `campuslogin` / `salesforce` — tracks origin during migration |
 | `first_name` | string | PII |
 | `last_name` | string | PII |
 | `email` | string | PII, unique within campus |
@@ -375,9 +377,9 @@ For each integration, build:
 - Selected by env var `<NAME>_ADAPTER=http|mock`
 - All adapters expose health-check endpoint surfaced in `/admin/health`.
 
-**MVP real adapters:** ampEducator (students, attendance, grades sync — pull every 15min via job), Moodle (enroll + activity pull), Twilio (send SMS + delivery webhook), Claude API.
+**MVP real adapters:** CampusLogin (students, attendance, grades sync — pull every 15min via job), Moodle (enroll + activity pull), BBB (attendance webhooks + meeting recordings ref), Twilio (send SMS + delivery webhook), Claude API.
 
-**Stubbed for MVP:** HubSpot, Salesforce, JustCall, Google Workspace, PandaDoc, BBB. Build the interface; ship mock; document the real-integration TODO in `/docs/INTEGRATIONS.md` with API doc links and required scopes.
+**Stubbed for MVP:** Salesforce (skeleton only — see SIS migration note in Section 1), JustCall, PandaDoc, Google Workspace, FAL.ai. Build the interface; ship mock; document the real-integration TODO in `/docs/INTEGRATIONS.md` with API doc links and required scopes.
 
 ---
 
@@ -401,7 +403,7 @@ For each integration, build:
 - 80%+ unit test coverage on `core/`.
 
 ### **PHASE 2 — Module 1 (Intake & Onboarding) end-to-end**
-- Backend: tables, workflows, ampEducator + Moodle adapters (real), email adapter (Nodemailer with SMTP env vars).
+- Backend: tables, workflows, CampusLogin + Moodle adapters (real), email adapter (Nodemailer with SMTP env vars).
 - Frontend: dashboard + student detail panel + manual orientation marking + survey link generator.
 - Smoke E2E test.
 
@@ -458,7 +460,7 @@ For each integration, build:
 The MVP is shippable when:
 1. A new student created via API or seed triggers the full onboarding workflow with email + Moodle + survey.
 2. Manually marking orientation attended advances the workflow correctly.
-3. A grade < threshold inserted via ampEducator adapter triggers `risk.flagged`, opens a case, notifies the Program Coordinator, and creates an intervention task — all visible on the at-risk dashboard within 30 seconds.
+3. A grade < threshold inserted via CampusLogin adapter triggers `risk.flagged`, opens a case, notifies the Program Coordinator, and creates an intervention task — all visible on the at-risk dashboard within 30 seconds.
 4. No coordinator action in 5 business days → escalation event fires (test with a clock-skip helper).
 5. Engagement score recomputes when a newsletter is opened or an event is logged.
 6. KPI dashboard shows accurate 90-day retention and at-risk % filterable by campus.
@@ -489,8 +491,9 @@ Begin with **Phase 0**. Specifically:
 3. Generate `/docs/ASSUMPTIONS.md` listing every assumption you're making (timezone = America/Edmonton, default passing grade = 70%, default attendance threshold = 80%, etc.).
 4. Generate `/docs/EVENT_CATALOG.md` from Section 6.
 5. Generate `/docs/RBAC_MATRIX.md` from Section 9.
-6. Init pnpm workspace + Docker Compose + `.env.example` + Prisma init.
-7. Output the Phase 0 deliverables block (Section 16).
-8. **STOP** and wait for go-ahead before Phase 1.
+6. Generate `/docs/SIS_MIGRATION.md` documenting CampusLogin → Salesforce field mapping plan and the `ISisAdapter` interface contract.
+7. Init pnpm workspace + Docker Compose + `.env.example` + Prisma init.
+8. Output the Phase 0 deliverables block (Section 16).
+9. **STOP** and wait for go-ahead before Phase 1.
 
 Begin now.
