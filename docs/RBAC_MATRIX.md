@@ -14,6 +14,17 @@
 4. **System Admin** (`role:admin`) — full access, integrations, automation
    rule editing.
 5. **Read-Only Auditor** (`role:auditor`) — compliance / PTIB-style review.
+6. **Counselor** (`role:counselor`) — wellness triage, confidential cases,
+   counseling appointments. Confidential cases (`Case.confidential = true`)
+   are visible ONLY to counselors and admins; even managers are denied by
+   the row-level filter unless they hold `case.confidential_access`.
+7. **Tutor** (`role:tutor`) — staff or peer tutor, sees only assigned
+   tutoring requests/sessions. Peer tutors are also students; the
+   `is_peer_tutor` flag on `User` plus `tutoring_subjects` controls which
+   subjects they can be matched on.
+8. **Student** (`role:student`) — first-class auth principal linked to a
+   `Student` row via `User.student_id`. Self-service capabilities only;
+   the row-level filter clamps every read to the student's own row.
 
 ## Capability matrix
 
@@ -42,29 +53,34 @@
 3. **UI guards** — `useCan(capability)` hook hides actions the user
    cannot perform. UI guards are cosmetic; the API is the only authority.
 
-## Capability registry (initial)
+## Capability registry
 
 ```
+# Staff — student records
 student.read
 student.update
 student.export
 
+# Casework
 case.read
 case.open
 case.close
 case.assign
+case.confidential_access     # counselor + admin only
 
 intervention.run
 intervention.complete
 
+# Dashboards
 dashboard.kpi.view
 dashboard.kpi.viewAll        # cross-campus
 dashboard.operational.view
 dashboard.audit.view
+dashboard.wellness.view      # counselor + admin
 
+# Configuration
 riskRules.read
 riskRules.edit               # admin only
-
 automation.rules.edit        # admin only
 integrations.configure       # admin only
 
@@ -72,6 +88,47 @@ audit.read                   # manager/admin/auditor
 
 reports.export.scoped
 reports.export.all
+
+# Messaging (staff side)
+messaging.staff.read
+messaging.staff.send
+
+# Appointments
+appointment.manage_own
+appointment.manage_all       # manager+
+
+# Documents
+document.review
+
+# Wellness
+wellness.triage              # counselor + admin
+wellness.read                # counselor + admin
+anon_report.triage           # counselor + manager + admin
+
+# Tutoring
+tutoring.match               # rep+
+tutoring.deliver             # tutor + coordinator
+
+# Resources
+resource.publish             # manager + admin
+
+# Workload + ML
+workload.view                # manager + admin
+ml.export.run                # admin only
+
+# Student-side (role=student)
+self.read
+self.message
+self.book_appointment
+self.upload_document
+self.wellness.checkin
+self.book_counseling
+self.request_tutoring
+self.study_group
+self.book_resource
+self.course.view
+self.transcript_request
+self.resource.read
 ```
 
 ## Scope model

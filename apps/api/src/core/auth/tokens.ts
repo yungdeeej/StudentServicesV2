@@ -11,6 +11,7 @@ export type AccessClaims = {
   campus_ids: string[];
   program_ids: string[];
   entity_ids: string[];
+  student_id?: string | null;
 };
 
 export function signAccessToken(claims: AccessClaims): string {
@@ -33,7 +34,5 @@ export function hashRefreshToken(token: string): string {
 }
 
 export function refreshExpiry(): Date {
-  // Default 30 days; in real code we'd parse JWT_REFRESH_TTL but we keep
-  // the math simple and trust the env default.
   return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 }

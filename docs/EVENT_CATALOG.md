@@ -119,6 +119,51 @@ Persistence rules:
 - Payload: `{ direction: 'in' | 'out', channel: 'email' | 'sms' | 'call' | 'voicemail', from, to, subject?, body_or_summary, external_id?, attachments_url? }`.
 - Universal — every adapter that sends or receives a message MUST emit it.
 
+## Student-facing portal events
+
+### Messaging
+- `message.sent` — payload `{ thread_id, message_id, sender_user_id }`.
+  Sentiment analyzer subscribes; if the sender is a student and the
+  Claude adapter returns `crisis_signal=true`, `wellness.crisis_detected`
+  is emitted with `source: 'message'`.
+- `message.read` — payload `{ thread_id, reader_user_id }`.
+
+### Appointments
+- `appointment.requested` / `appointment.confirmed` /
+  `appointment.cancelled` / `appointment.completed`. Payload includes
+  `{ appointment_id, kind, scheduled_at }`. Each request also emits
+  `task.created` for the staff member.
+
+### Documents
+- `document.uploaded` — payload `{ document_id, kind, filename }`.
+- `document.reviewed` — payload `{ document_id, status }`.
+
+### Wellness
+- `wellness.checkin_submitted` — payload
+  `{ checkin_id, risk_tier, phq2_total }`.
+- `wellness.crisis_detected` — payload
+  `{ checkin_id?, message_id?, source: 'checkin' | 'message',
+     risk_tier: 'crisis' | 'high', crisis_phrase_hit }`.
+  Triggers the wellness handoff workflow: confidential case + counselor
+  task + confidential message thread.
+- `anon_report.submitted` — payload `{ report_id, category, campus_id }`.
+  Public endpoint; no `student_id` is recorded.
+
+### Tutoring + study groups
+- `tutoring.requested`, `tutoring.matched`,
+  `tutoring.session_completed`.
+- `study_group.created`, `study_group.joined`, `study_group.left`.
+
+### Resources, courses, transcripts
+- `resource.booked`, `resource.booking_cancelled`.
+- `course.enrolled`, `course.completed`, `course.dropped`.
+- `transcript.requested`, `transcript.delivered`.
+
+### Automation
+- `staff.workload_alert` — payload
+  `{ user_id, burnout_score, open_cases, open_tasks }`. Emitted by the
+  6-hourly `snapshotWorkload` job when a staff member's score ≥ 70.
+
 ## Adding a new event
 
 1. Append a row above with envelope + payload schema.

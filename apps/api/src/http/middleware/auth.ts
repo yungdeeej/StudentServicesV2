@@ -18,6 +18,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       campus_ids: claims.campus_ids,
       program_ids: claims.program_ids,
       entity_ids: claims.entity_ids,
+      student_id: claims.student_id ?? null,
     });
     if (ctx) {
       ctx.user_id = claims.sub;

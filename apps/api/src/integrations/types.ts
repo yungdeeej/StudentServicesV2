@@ -118,6 +118,12 @@ export interface IClaudeAdapter extends IIntegrationAdapter {
     context: string;
     voice_sample?: string;
   }): Promise<{ draft: string }>;
+  analyzeSentiment(args: { text: string }): Promise<{
+    label: 'positive' | 'neutral' | 'negative' | 'distressed';
+    score: number;            // -1 to 1
+    crisis_signal: boolean;
+    rationale?: string;
+  }>;
 }
 
 // ----------------------------------------------------------------------------

@@ -6,6 +6,10 @@ const NAV = [
   { id: 'students', label: 'Students' },
   { id: 'at-risk', label: 'At-Risk' },
   { id: 'engagement', label: 'Engagement' },
+  { id: 'messaging', label: 'Messages' },
+  { id: 'wellness-queue', label: 'Wellness' },
+  { id: 'workload', label: 'Workload' },
+  { id: 'anon-reports', label: 'Anonymous' },
   { id: 'reporting', label: 'Reporting' },
 ];
 

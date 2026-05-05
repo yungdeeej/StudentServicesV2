@@ -39,6 +39,9 @@ enum UserRole {
   manager
   admin
   auditor
+  student
+  counselor
+  tutor
 }
 
 enum CommunicationDirection {
@@ -120,6 +123,153 @@ enum PracticumStatus {
   failed
 }
 
+enum AppointmentKind {
+  advising
+  counseling
+  tutoring
+  career
+  other
+}
+
+enum AppointmentStatus {
+  requested
+  confirmed
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+enum AppointmentLocation {
+  in_person
+  video
+  phone
+}
+
+enum DocumentKind {
+  id
+  transcript
+  accommodation
+  enrollment_agreement
+  reentry_doc
+  other
+}
+
+enum DocumentStatus {
+  uploaded
+  under_review
+  approved
+  rejected
+  expired
+}
+
+enum MessageThreadStatus {
+  open
+  resolved
+  archived
+}
+
+enum WellnessRiskTier {
+  none
+  low
+  moderate
+  high
+  crisis
+}
+
+enum AnonymousReportCategory {
+  harassment
+  discrimination
+  mental_health
+  safety
+  academic_integrity
+  other
+}
+
+enum AnonymousReportStatus {
+  new
+  triaged
+  in_progress
+  resolved
+  closed_no_action
+}
+
+enum ResourceKind {
+  article
+  video
+  pdf
+  external_link
+  hotline
+}
+
+enum ResourceTopic {
+  mental_health
+  study_skills
+  time_management
+  technology
+  attendance
+  practicum
+  general
+}
+
+enum TutoringStatus {
+  requested
+  matched
+  in_progress
+  completed
+  cancelled
+}
+
+enum TutoringSessionStatus {
+  scheduled
+  completed
+  no_show
+  cancelled
+}
+
+enum StudyGroupRole {
+  leader
+  member
+}
+
+enum BookableResourceKind {
+  study_room
+  equipment
+  library
+  lab
+}
+
+enum BookingStatus {
+  reserved
+  confirmed
+  cancelled
+  completed
+  no_show
+}
+
+enum CourseEnrollmentStatus {
+  prospective
+  enrolled
+  completed
+  dropped
+  failed
+}
+
+enum TranscriptRequestStatus {
+  draft
+  pending_signature
+  in_progress
+  delivered
+  cancelled
+}
+
+enum SentimentLabel {
+  positive
+  neutral
+  negative
+  distressed
+}
+
 // ----------------------------------------------------------------------------
 // Org / tenancy
 // ----------------------------------------------------------------------------
@@ -190,6 +340,17 @@ model User {
   updated_at          DateTime  @updatedAt
   deleted_at          DateTime?
 
+  // For role=student: link to Student aggregate.
+  student_id          String?   @unique @db.Uuid
+  student             Student?  @relation("StudentAuth", fields: [student_id], references: [id], onDelete: Cascade)
+
+  // For role=tutor (or any user willing to tutor): subjects they can teach.
+  tutoring_subjects   String[]  @default([])
+  is_peer_tutor       Boolean   @default(false)
+
+  // Counseling-specific staff guard.
+  is_counselor        Boolean   @default(false)
+
   refresh_tokens               RefreshToken[]
   audit_log_entries            AuditLog[]
   cases_assigned               Case[]            @relation("CaseAssignee")
@@ -197,6 +358,15 @@ model User {
   tasks_owned                  Task[]            @relation("TaskOwner")
   students_as_pc               Student[]         @relation("CoordinatorAssignment")
   students_as_rep              Student[]         @relation("RepAssignment")
+
+  messages_sent                Message[]         @relation("MessageSender")
+  appointments_as_staff        Appointment[]    @relation("AppointmentStaff")
+  staff_availability           StaffAvailability[]
+  documents_uploaded           StudentDocument[] @relation("DocumentUploader")
+  tutoring_requests_matched    TutoringRequest[] @relation("TutoringMatched")
+  tutoring_sessions_as_tutor   TutoringSession[] @relation("TutoringTutor")
+  study_groups_created         StudyGroup[]      @relation("StudyGroupCreator")
+  workload_snapshots           StaffWorkloadSnapshot[]
 }
 
 model RefreshToken {
@@ -250,6 +420,7 @@ model Student {
   rep         User? @relation("RepAssignment",         fields: [assigned_student_services_rep_id],  references: [id])
 
   flags                       StudentFlags?
+  user                        User?                     @relation("StudentAuth")
   orientation_records         OrientationRecord[]
   welcome_communications      WelcomeCommunication[]
   moodle_enrollment_status    MoodleEnrollmentStatus?
@@ -271,6 +442,16 @@ model Student {
   practicum_placements        PracticumPlacement[]
   timeline_progress           StudentTimelineProgress[]
   communications              Communication[]
+
+  message_threads             MessageThread[]
+  appointments                Appointment[]
+  documents                   StudentDocument[]
+  wellness_checkins           WellnessCheckin[]
+  tutoring_requests           TutoringRequest[]
+  study_group_memberships     StudyGroupMember[]
+  resource_bookings           ResourceBooking[]
+  course_enrollments          CourseEnrollment[]
+  transcript_requests         TranscriptRequest[]
 
   @@unique([campus_id, email])
   @@index([campus_id, status])
@@ -612,6 +793,8 @@ model Case {
   id              String     @id @default(uuid()) @db.Uuid
   student_id      String     @db.Uuid
   reason          String
+  kind            String     @default("at_risk") // at_risk | wellness | tutoring | other
+  confidential    Boolean    @default(false)
   status          CaseStatus @default(open)
   assignee_id     String?    @db.Uuid
   opened_at       DateTime   @default(now())
@@ -627,6 +810,7 @@ model Case {
 
   @@index([assignee_id, status])
   @@index([student_id])
+  @@index([kind, status])
 }
 
 // ----------------------------------------------------------------------------
@@ -771,4 +955,385 @@ model PracticumEvaluation {
   evaluated_at  DateTime @default(now())
 
   placement PracticumPlacement @relation(fields: [placement_id], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------------------------------
+// Student-facing portal additions
+// ----------------------------------------------------------------------------
+
+model MessageThread {
+  id          String              @id @default(uuid()) @db.Uuid
+  student_id  String              @db.Uuid
+  subject     String
+  status      MessageThreadStatus @default(open)
+  created_at  DateTime            @default(now())
+  updated_at  DateTime            @updatedAt
+  last_message_at DateTime?
+  confidential Boolean            @default(false)
+
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([student_id, status])
+  @@index([last_message_at])
+}
+
+model Message {
+  id            String   @id @default(uuid()) @db.Uuid
+  thread_id     String   @db.Uuid
+  sender_user_id String  @db.Uuid
+  body          String
+  body_html     String?
+  attachments   Json?
+  read_by       Json     @default("[]")
+  created_at    DateTime @default(now())
+  edited_at     DateTime?
+  sentiment_label SentimentLabel?
+  sentiment_score Float?
+
+  thread MessageThread @relation(fields: [thread_id], references: [id], onDelete: Cascade)
+  sender User          @relation("MessageSender", fields: [sender_user_id], references: [id])
+
+  @@index([thread_id, created_at])
+}
+
+model StaffAvailability {
+  id            String   @id @default(uuid()) @db.Uuid
+  user_id       String   @db.Uuid
+  day_of_week   Int      // 0 (Sun) - 6 (Sat) per JS Date.getDay()
+  start_minute  Int      // minutes from midnight, local TZ
+  end_minute    Int
+  slot_minutes  Int      @default(30)
+  appointment_kinds AppointmentKind[]
+  active        Boolean  @default(true)
+  effective_from DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, day_of_week])
+}
+
+model Appointment {
+  id              String              @id @default(uuid()) @db.Uuid
+  student_id      String              @db.Uuid
+  staff_user_id   String              @db.Uuid
+  kind            AppointmentKind
+  status          AppointmentStatus   @default(requested)
+  location        AppointmentLocation @default(video)
+  location_detail String?
+  scheduled_at    DateTime
+  duration_minutes Int                @default(30)
+  notes_student   String?
+  notes_staff     String?
+  case_id         String?             @db.Uuid
+  google_event_id String?
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+  cancelled_at    DateTime?
+  cancelled_reason String?
+
+  student   Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  staff     User    @relation("AppointmentStaff", fields: [staff_user_id], references: [id])
+
+  @@index([student_id])
+  @@index([staff_user_id, scheduled_at])
+}
+
+model StudentDocument {
+  id              String         @id @default(uuid()) @db.Uuid
+  student_id      String         @db.Uuid
+  uploaded_by_id  String         @db.Uuid
+  kind            DocumentKind
+  filename        String
+  storage_url     String
+  mime_type       String
+  size_bytes      Int
+  status          DocumentStatus @default(uploaded)
+  reviewer_notes  String?
+  uploaded_at     DateTime       @default(now())
+  reviewed_at     DateTime?
+  expires_at      DateTime?
+
+  student     Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  uploaded_by User    @relation("DocumentUploader", fields: [uploaded_by_id], references: [id])
+
+  @@index([student_id, kind])
+}
+
+// ----------------------------------------------------------------------------
+// Wellness
+// ----------------------------------------------------------------------------
+
+model WellnessCheckin {
+  id              String           @id @default(uuid()) @db.Uuid
+  student_id      String           @db.Uuid
+  phq2_q1         Int              // 0-3 — "Little interest or pleasure in doing things"
+  phq2_q2         Int              // 0-3 — "Feeling down, depressed, or hopeless"
+  phq2_total      Int
+  stress_score    Int              // 0-10 self-reported
+  energy_score    Int?             // 0-10
+  sleep_hours     Float?
+  free_text       String?
+  risk_tier       WellnessRiskTier
+  ai_flagged      Boolean          @default(false)
+  ai_summary      String?
+  occurred_at     DateTime         @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id, occurred_at])
+  @@index([risk_tier])
+}
+
+model AnonymousReport {
+  id          String                  @id @default(uuid()) @db.Uuid
+  // hash_token lets the reporter check status without revealing identity.
+  hash_token  String                  @unique
+  category    AnonymousReportCategory
+  campus_id   String?                 @db.Uuid
+  body        String
+  contact_optional String?
+  status      AnonymousReportStatus   @default(new)
+  triaged_by  String?                 @db.Uuid
+  notes       String?
+  created_at  DateTime                @default(now())
+  resolved_at DateTime?
+
+  @@index([status])
+  @@index([category])
+}
+
+model Resource {
+  id          String        @id @default(uuid()) @db.Uuid
+  kind        ResourceKind
+  topic       ResourceTopic
+  title       String
+  body_md     String?
+  url         String?
+  campus_scope String[]     @db.Uuid    // empty = all campuses
+  tags        String[]
+  language    String        @default("en")
+  is_crisis   Boolean       @default(false)
+  published_at DateTime     @default(now())
+
+  @@index([topic])
+  @@index([kind])
+}
+
+// ----------------------------------------------------------------------------
+// Tutoring
+// ----------------------------------------------------------------------------
+
+model TutoringRequest {
+  id            String         @id @default(uuid()) @db.Uuid
+  student_id    String         @db.Uuid
+  subject       String
+  topic         String?
+  urgency       String         @default("normal")  // low | normal | high
+  preferred_format String      @default("any")      // in_person | video | any
+  notes         String?
+  status        TutoringStatus @default(requested)
+  matched_user_id String?      @db.Uuid
+  created_at    DateTime       @default(now())
+  matched_at    DateTime?
+  closed_at     DateTime?
+
+  student      Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  matched_user User?   @relation("TutoringMatched", fields: [matched_user_id], references: [id])
+  sessions     TutoringSession[]
+
+  @@index([status])
+  @@index([student_id])
+}
+
+model TutoringSession {
+  id              String                  @id @default(uuid()) @db.Uuid
+  request_id      String                  @db.Uuid
+  tutor_user_id   String                  @db.Uuid
+  scheduled_at    DateTime
+  duration_minutes Int                    @default(45)
+  status          TutoringSessionStatus   @default(scheduled)
+  notes           String?
+  hours_credited  Float                   @default(0)
+
+  request TutoringRequest @relation(fields: [request_id], references: [id], onDelete: Cascade)
+  tutor   User            @relation("TutoringTutor", fields: [tutor_user_id], references: [id])
+
+  @@index([request_id])
+  @@index([tutor_user_id, scheduled_at])
+}
+
+// ----------------------------------------------------------------------------
+// Study groups
+// ----------------------------------------------------------------------------
+
+model StudyGroup {
+  id              String   @id @default(uuid()) @db.Uuid
+  campus_id       String   @db.Uuid
+  course_external_id String?
+  name            String
+  description     String?
+  max_members     Int      @default(8)
+  meeting_pattern String?
+  created_by_user_id String? @db.Uuid
+  created_at      DateTime @default(now())
+  archived_at     DateTime?
+
+  creator User?              @relation("StudyGroupCreator", fields: [created_by_user_id], references: [id])
+  members StudyGroupMember[]
+
+  @@index([campus_id])
+  @@index([course_external_id])
+}
+
+model StudyGroupMember {
+  id           String         @id @default(uuid()) @db.Uuid
+  group_id     String         @db.Uuid
+  student_id   String         @db.Uuid
+  role         StudyGroupRole @default(member)
+  joined_at    DateTime       @default(now())
+  left_at      DateTime?
+
+  group   StudyGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  student Student    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_id, student_id])
+}
+
+// ----------------------------------------------------------------------------
+// Bookable resources (study rooms / equipment / lab time)
+// ----------------------------------------------------------------------------
+
+model BookableResource {
+  id            String              @id @default(uuid()) @db.Uuid
+  campus_id     String              @db.Uuid
+  kind          BookableResourceKind
+  name          String
+  location      String?
+  capacity      Int                 @default(1)
+  slot_minutes  Int                 @default(60)
+  open_minute   Int                 @default(420)   // 7:00 local
+  close_minute  Int                 @default(1260)  // 21:00 local
+  active        Boolean             @default(true)
+
+  bookings ResourceBooking[]
+
+  @@index([campus_id, kind])
+}
+
+model ResourceBooking {
+  id          String        @id @default(uuid()) @db.Uuid
+  resource_id String        @db.Uuid
+  student_id  String        @db.Uuid
+  starts_at   DateTime
+  ends_at     DateTime
+  status      BookingStatus @default(reserved)
+  created_at  DateTime      @default(now())
+  cancelled_at DateTime?
+
+  resource BookableResource @relation(fields: [resource_id], references: [id], onDelete: Cascade)
+  student  Student          @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([resource_id, starts_at])
+  @@index([student_id])
+}
+
+// ----------------------------------------------------------------------------
+// Course catalog
+// ----------------------------------------------------------------------------
+
+model Course {
+  id            String   @id @default(uuid()) @db.Uuid
+  external_id   String   @unique
+  code          String
+  name          String
+  description   String?
+  credits       Float    @default(0)
+  campus_id     String   @db.Uuid
+  program_id    String?  @db.Uuid
+  active        Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  prerequisites CoursePrerequisite[] @relation("CourseRequires")
+  required_by   CoursePrerequisite[] @relation("CourseRequiresOf")
+  enrollments   CourseEnrollment[]
+
+  @@index([campus_id, active])
+}
+
+model CoursePrerequisite {
+  course_id           String @db.Uuid
+  requires_course_id  String @db.Uuid
+
+  course           Course @relation("CourseRequires",   fields: [course_id], references: [id], onDelete: Cascade)
+  requires_course  Course @relation("CourseRequiresOf", fields: [requires_course_id], references: [id], onDelete: Cascade)
+
+  @@id([course_id, requires_course_id])
+}
+
+model CourseEnrollment {
+  id          String                  @id @default(uuid()) @db.Uuid
+  course_id   String                  @db.Uuid
+  student_id  String                  @db.Uuid
+  status      CourseEnrollmentStatus  @default(prospective)
+  term        String?
+  enrolled_at DateTime                @default(now())
+  ended_at    DateTime?
+
+  course  Course  @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([course_id, student_id, term])
+  @@index([student_id])
+}
+
+// ----------------------------------------------------------------------------
+// Transcript / verification requests (uses PandaDoc adapter)
+// ----------------------------------------------------------------------------
+
+model TranscriptRequest {
+  id              String                  @id @default(uuid()) @db.Uuid
+  student_id      String                  @db.Uuid
+  recipient_name  String
+  recipient_email String
+  notes           String?
+  status          TranscriptRequestStatus @default(draft)
+  pandadoc_ref    String?
+  requested_at    DateTime                @default(now())
+  delivered_at    DateTime?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+  @@index([status])
+}
+
+// ----------------------------------------------------------------------------
+// Automation: workload balancer + ML training exports
+// ----------------------------------------------------------------------------
+
+model StaffWorkloadSnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  user_id               String   @db.Uuid
+  captured_at           DateTime @default(now())
+  open_cases            Int
+  open_tasks            Int
+  open_interventions    Int
+  appointments_next_7d  Int
+  avg_response_minutes  Float?
+  burnout_score         Int      @default(0)   // 0-100, higher = more loaded
+  flagged               Boolean  @default(false)
+  notes                 String?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, captured_at])
+}
+
+model MlTrainingExport {
+  id          String   @id @default(uuid()) @db.Uuid
+  generated_at DateTime @default(now())
+  row_count   Int
+  storage_url String
+  notes       String?
 }

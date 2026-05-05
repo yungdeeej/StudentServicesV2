@@ -3,6 +3,8 @@ import { runDueTimelineSteps } from '../modules/engagement/timeline.js';
 import { runEscalationSweep } from '../modules/risk/workflows.js';
 import { runReentryWeeklyChecks } from '../modules/support/workflows.js';
 import { syncSisOnce } from './sis-sync.js';
+import { snapshotWorkload } from './workload-balancer.js';
+import { runMlTrainingExport } from './ml-export.js';
 import { redis, createRedis } from '../core/db/redis.js';
 import { logger } from '../core/logger.js';
 
@@ -14,6 +16,8 @@ const JOBS = [
   { name: 'escalation', cron: '*/5 * * * *', fn: runEscalationSweep },
   { name: 'reentry-checks', cron: '0 9 * * *', fn: runReentryWeeklyChecks },
   { name: 'sis-sync', cron: '*/15 * * * *', fn: syncSisOnce },
+  { name: 'workload-snapshot', cron: '0 */6 * * *', fn: snapshotWorkload },
+  { name: 'ml-export', cron: '0 3 * * 0', fn: runMlTrainingExport }, // Sunday 03:00
 ] as const;
 
 let worker: Worker | undefined;
@@ -21,7 +25,6 @@ let worker: Worker | undefined;
 export async function startScheduler(): Promise<void> {
   if (worker) return;
 
-  // Register repeating jobs
   for (const job of JOBS) {
     await queue.add(
       job.name,

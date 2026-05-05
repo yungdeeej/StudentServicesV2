@@ -12,6 +12,8 @@ import { registerEngagementScoreRecompute } from './modules/engagement/score.js'
 import { registerRiskWorkflows } from './modules/risk/workflows.js';
 import { registerSupportWorkflows } from './modules/support/workflows.js';
 import { registerPracticumWorkflows } from './modules/practicum/workflows.js';
+import { registerWellnessWorkflows } from './modules/wellness/workflows.js';
+import { registerSentimentAnalysis } from './modules/messaging/sentiment.js';
 import { registerSocketBroadcasts } from './http/sockets.js';
 import { startScheduler } from './jobs/scheduler.js';
 
@@ -28,6 +30,22 @@ import { practicumRouter } from './modules/practicum/routes.js';
 import { reportingRouter } from './modules/reporting/routes.js';
 import { aiRouter } from './modules/ai/routes.js';
 
+import { studentSelfRouter } from './modules/student/routes.js';
+import { messagingRouter } from './modules/messaging/routes.js';
+import { appointmentsRouter } from './modules/appointments/routes.js';
+import { documentsRouter } from './modules/documents/routes.js';
+import { wellnessRouter } from './modules/wellness/routes.js';
+import { resourcesRouter } from './modules/resources/routes.js';
+import { tutoringRouter } from './modules/tutoring/routes.js';
+import { studyGroupsRouter } from './modules/study-groups/routes.js';
+import { bookableResourcesRouter } from './modules/bookable-resources/routes.js';
+import { coursesRouter } from './modules/courses/routes.js';
+import { transcriptsRouter } from './modules/transcripts/routes.js';
+import {
+  anonymousReportsPublicRouter,
+  anonymousReportsStaffRouter,
+} from './modules/anonymous-reports/routes.js';
+
 const env = loadEnv();
 
 export function createApp(): express.Express {
@@ -38,6 +56,11 @@ export function createApp(): express.Express {
 
   app.use(healthRouter);
   app.use('/api/v1/auth', authRouter);
+
+  // Public (no auth) endpoints
+  app.use('/api/v1', anonymousReportsPublicRouter);
+
+  // Staff-side
   app.use('/api/v1/students', studentsRouter);
   app.use('/api/v1/intake', intakeRouter);
   app.use('/api/v1/engagement', engagementRouter);
@@ -46,6 +69,22 @@ export function createApp(): express.Express {
   app.use('/api/v1/practicum', practicumRouter);
   app.use('/api/v1/reporting', reportingRouter);
   app.use('/api/v1/ai', aiRouter);
+  app.use('/api/v1/anon-reports', anonymousReportsStaffRouter);
+
+  // Shared (staff + student) — RBAC inside the routers gates each verb
+  app.use('/api/v1/messaging', messagingRouter);
+  app.use('/api/v1/appointments', appointmentsRouter);
+  app.use('/api/v1/documents', documentsRouter);
+  app.use('/api/v1/wellness', wellnessRouter);
+  app.use('/api/v1/resources', resourcesRouter);
+  app.use('/api/v1/tutoring', tutoringRouter);
+  app.use('/api/v1/study-groups', studyGroupsRouter);
+  app.use('/api/v1/bookable-resources', bookableResourcesRouter);
+  app.use('/api/v1/courses', coursesRouter);
+  app.use('/api/v1/transcripts', transcriptsRouter);
+
+  // Student-only self-service surface
+  app.use('/api/v1/student', studentSelfRouter);
 
   app.use(notFound);
   app.use(errorHandler);
@@ -60,6 +99,8 @@ export function registerAllWorkflows(): void {
   registerRiskWorkflows();
   registerSupportWorkflows();
   registerPracticumWorkflows();
+  registerWellnessWorkflows();
+  registerSentimentAnalysis();
 }
 
 async function main(): Promise<void> {

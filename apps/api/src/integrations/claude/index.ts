@@ -30,6 +30,24 @@ export class ClaudeMockAdapter implements IClaudeAdapter {
       draft: `Hi ${args.student_first_name}, just checking in — ${args.context}. Let me know how you're doing or if you need anything from us.`,
     };
   }
+  async analyzeSentiment(args: { text: string }): Promise<{
+    label: 'positive' | 'neutral' | 'negative' | 'distressed';
+    score: number;
+    crisis_signal: boolean;
+    rationale?: string;
+  }> {
+    const text = args.text.toLowerCase();
+    const distressKeywords = ['hopeless', "can't cope", 'cant cope', 'overwhelmed', 'breakdown', 'panic'];
+    const crisisKeywords = ['kill myself', 'suicide', 'self harm', 'self-harm', 'want to die'];
+    const positiveKeywords = ['thanks', 'thank you', 'grateful', 'great', 'love', 'awesome'];
+    const negativeKeywords = ['frustrated', 'angry', 'upset', 'unfair', 'failing', 'stressed'];
+    const crisis_signal = crisisKeywords.some((k) => text.includes(k));
+    if (crisis_signal) return { label: 'distressed', score: -1, crisis_signal: true };
+    if (distressKeywords.some((k) => text.includes(k))) return { label: 'distressed', score: -0.8, crisis_signal: false };
+    if (negativeKeywords.some((k) => text.includes(k))) return { label: 'negative', score: -0.4, crisis_signal: false };
+    if (positiveKeywords.some((k) => text.includes(k))) return { label: 'positive', score: 0.6, crisis_signal: false };
+    return { label: 'neutral', score: 0, crisis_signal: false };
+  }
 }
 
 export class ClaudeHttpAdapter implements IClaudeAdapter {
@@ -101,5 +119,30 @@ export class ClaudeHttpAdapter implements IClaudeAdapter {
     if (!res.ok) throw new Error(`claude.draftNudge: ${res.status}`);
     const data = (await res.json()) as { content: Array<{ text: string }> };
     return { draft: data.content?.[0]?.text ?? '' };
+  }
+  async analyzeSentiment(args: { text: string }): Promise<{
+    label: 'positive' | 'neutral' | 'negative' | 'distressed';
+    score: number;
+    crisis_signal: boolean;
+    rationale?: string;
+  }> {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: 200,
+        system:
+          'Analyze the sentiment of the student message. Return JSON only: {label: positive|neutral|negative|distressed, score: -1..1, crisis_signal: boolean, rationale: string}. crisis_signal=true ONLY if the writer references self-harm, suicide, or imminent harm.',
+        messages: [{ role: 'user', content: args.text }],
+      }),
+    });
+    if (!res.ok) throw new Error(`claude.analyzeSentiment: ${res.status}`);
+    const data = (await res.json()) as { content: Array<{ text: string }> };
+    return JSON.parse(data.content?.[0]?.text ?? '{}');
   }
 }

@@ -33,6 +33,7 @@ authRouter.post('/login', validate({ body: LoginBody }), async (req, res) => {
     campus_ids: user.campus_ids,
     program_ids: user.program_ids,
     entity_ids: user.entity_ids,
+    student_id: user.student_id ?? null,
   });
   const { token: refresh, tokenHash } = newRefreshToken();
   await prisma.refreshToken.create({
@@ -49,7 +50,14 @@ authRouter.post('/login', validate({ body: LoginBody }), async (req, res) => {
   res.json({
     access_token: access,
     refresh_token: refresh,
-    user: { id: user.id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name },
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      student_id: user.student_id,
+    },
   });
 });
 
@@ -88,6 +96,7 @@ authRouter.post('/refresh', validate({ body: RefreshBody }), async (req, res) =>
     campus_ids: user.campus_ids,
     program_ids: user.program_ids,
     entity_ids: user.entity_ids,
+    student_id: user.student_id ?? null,
   });
   res.json({ access_token: access, refresh_token: newRefresh });
 });

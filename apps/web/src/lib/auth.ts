@@ -10,6 +10,23 @@ function notify(): void {
   for (const l of listeners) l();
 }
 
+export type User = {
+  id: string;
+  email: string;
+  role:
+    | 'rep'
+    | 'coordinator'
+    | 'manager'
+    | 'admin'
+    | 'auditor'
+    | 'counselor'
+    | 'tutor'
+    | 'student';
+  first_name: string;
+  last_name: string;
+  student_id?: string | null;
+};
+
 export const auth = {
   isAuthenticated(): boolean {
     return Boolean(localStorage.getItem(ACCESS_KEY));
@@ -17,9 +34,12 @@ export const auth = {
   getAccessToken(): string | null {
     return localStorage.getItem(ACCESS_KEY);
   },
-  getUser(): { id: string; email: string; role: string; first_name: string; last_name: string } | null {
+  getUser(): User | null {
     const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as ReturnType<typeof auth.getUser>) : null;
+    return raw ? (JSON.parse(raw) as User) : null;
+  },
+  isStudent(): boolean {
+    return this.getUser()?.role === 'student';
   },
   async login(email: string, password: string): Promise<void> {
     const res = await fetch('/api/v1/auth/login', {
@@ -31,7 +51,7 @@ export const auth = {
     const data = (await res.json()) as {
       access_token: string;
       refresh_token: string;
-      user: { id: string; email: string; role: string; first_name: string; last_name: string };
+      user: User;
     };
     localStorage.setItem(ACCESS_KEY, data.access_token);
     localStorage.setItem(REFRESH_KEY, data.refresh_token);

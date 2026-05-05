@@ -141,3 +141,80 @@ the project uses [Conventional Commits](https://www.conventionalcommits.org/).
   (one per role, password `changeme123`), 3 connect rooms, 3 default
   intervention playbooks, 50 demo students across all statuses with
   flags pre-populated.
+
+## Student-facing portal expansion
+
+### Added — Schema
+- New roles on `UserRole`: `student`, `counselor`, `tutor`.
+- `User.student_id` (unique nullable FK to `Student`) — links auth to
+  the aggregate. `User.is_counselor`, `User.is_peer_tutor`,
+  `User.tutoring_subjects` for finer-grained access.
+- `Case.kind` and `Case.confidential` for wellness/counseling cases.
+- 22 new models: `MessageThread`, `Message`, `StaffAvailability`,
+  `Appointment`, `StudentDocument`, `WellnessCheckin`, `AnonymousReport`,
+  `Resource`, `TutoringRequest`, `TutoringSession`, `StudyGroup`,
+  `StudyGroupMember`, `BookableResource`, `ResourceBooking`, `Course`,
+  `CoursePrerequisite`, `CourseEnrollment`, `TranscriptRequest`,
+  `StaffWorkloadSnapshot`, `MlTrainingExport` (plus 19 supporting
+  enums).
+
+### Added — RBAC
+- 28 new capabilities (see `docs/RBAC_MATRIX.md`).
+- Row-level filter now also gates by `student_id` for `role=student` and
+  by `confidential=false` for everyone except `case.confidential_access`
+  holders. Confidential message threads follow the same lock.
+
+### Added — Backend modules
+- `modules/student/` — self-service `/me`, `/grades`, `/attendance`,
+  `/cases`, `/tasks`.
+- `modules/messaging/` — threaded conversations with read receipts.
+  Sentiment analyzer subscribes to `message.sent` and emits
+  `wellness.crisis_detected` on flagged messages.
+- `modules/appointments/` — staff availability + slot search
+  (`computeAvailableSlots`) + booking with collision check + optional
+  Google Calendar push.
+- `modules/documents/` — presigned-URL-based upload metadata +
+  staff review.
+- `modules/wellness/` — PHQ-2 + stress check-in scoring
+  (`assessWellness`), crisis-phrase detection, automated handoff
+  workflow that opens a confidential case + creates an urgent counselor
+  task + opens a confidential message thread; counselor triage queue;
+  crisis-resource directory.
+- `modules/anonymous-reports/` — public token-based submission, hashed
+  claim token, staff triage queue.
+- `modules/resources/` — resource library with topic + crisis filters.
+- `modules/tutoring/`, `modules/study-groups/`,
+  `modules/bookable-resources/`, `modules/courses/`,
+  `modules/transcripts/` — full self-service flows for each.
+- `jobs/workload-balancer.ts` — 6-hourly snapshot, burnout score 0–100,
+  manager-targeted task surfaced when ≥ 70.
+- `jobs/ml-export.ts` — weekly anonymized training set for the
+  predictive risk model.
+- Wired into `jobs/scheduler.ts` and `server.ts`.
+
+### Added — Integrations
+- `IClaudeAdapter.analyzeSentiment(text)` — used by the messaging
+  sentiment analyzer; mock impl uses keyword heuristics, http impl
+  calls the Anthropic API.
+
+### Added — Frontend
+- Bifurcated Layout: staff vs `StudentLayout` based on role.
+- 13 student pages: Dashboard, Grades, Attendance, Messages,
+  Appointments, Documents, Wellness check-in, Tutoring, Study groups,
+  Resources, Courses, Transcripts, Book a room.
+- 4 new staff pages: Messaging, Wellness queue, Workload, Anonymous
+  reports.
+- PWA: `manifest.webmanifest` + `sw.js` (stale-while-revalidate for
+  most GETs; bypasses auth + messaging + wellness for safety).
+
+### Added — Tests
+- `apps/api/src/modules/wellness/scoring.test.ts` — PHQ-2 thresholds,
+  clamping, crisis-phrase escalation.
+
+### Added — Seed
+- 3 student logins (`student0..2@mcg.example`, password `changeme123`),
+  counselor + tutor accounts, 5 resources (incl. two crisis hotlines:
+  Talk Suicide Canada, AHS Mental Health Help Line), 6 courses with
+  catalog metadata, 6 bookable resources (study rooms + clinical labs
+  per campus), one sample study group with member, M/W/F + T/Th staff
+  availability windows.

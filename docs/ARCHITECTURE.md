@@ -106,3 +106,36 @@ in the Phase 9 hardening pass.
 Phase 0 bootstrap (this commit) → Phase 1 core (students, events, RBAC,
 audit) → Phases 2–6 modules end-to-end → Phase 7 reporting → Phase 8 AI
 layer → Phase 9 hardening. MVP is Phases 0–4 plus 7 per README §15.
+
+## Student-facing portal layer (added beyond the original brief)
+
+Students are now first-class auth principals: `User.role = 'student'`
+with a `student_id` FK linking to the `Student` aggregate. Everything
+they touch goes through the same Prisma row-level filter, which clamps
+queries to their own row. Two extra staff roles were added: `counselor`
+(wellness triage + confidential cases) and `tutor` (peer or staff
+tutoring). The `Case.confidential` flag lets the row-level filter hide
+sensitive wellness cases from the rest of the staff body.
+
+New backend modules: `student/` (self-service `/me`, grades, attendance,
+cases, tasks), `messaging/` (threaded conversations + read receipts +
+sentiment analysis), `appointments/` (staff availability + slot search +
+booking with collision detection + Google Calendar push),
+`documents/` (presigned-URL upload metadata + staff review),
+`wellness/` (PHQ-2 + stress check-in with crisis-phrase detection,
+counselor triage queue, crisis hotline directory, automated
+confidential-case handoff workflow), `anonymous-reports/` (public
+token-based submission for harassment/safety/mental-health reports +
+staff triage), `resources/` (resource library), `tutoring/`,
+`study-groups/`, `bookable-resources/` (rooms/labs), `courses/`
+(catalog + prerequisites + self-enrollment), `transcripts/` (PandaDoc
+release-form workflow). Cross-cutting: a 6-hourly workload-balancer
+job that scores each staff member 0–100 on burnout and a weekly
+ML-training-set export feeding the predictive risk model.
+
+Frontend: a separate student layout + 13 student-facing pages (Home,
+Grades, Attendance, Courses, Transcripts, Messages, Appointments,
+Wellness check-in, Tutoring, Documents, Study groups, Book a room,
+Resources). The shell is dark-mode-first and ships as a PWA with a
+service worker that caches the app shell while explicitly bypassing
+sensitive endpoints (auth, messaging, wellness).

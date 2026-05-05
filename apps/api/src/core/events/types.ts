@@ -54,6 +54,42 @@ export const EVENT_TYPES = {
 
   CommunicationLogged: 'communication.logged',
   TaskCreated: 'task.created',
+
+  // Student-facing portal additions
+  MessageSent: 'message.sent',
+  MessageRead: 'message.read',
+
+  AppointmentRequested: 'appointment.requested',
+  AppointmentConfirmed: 'appointment.confirmed',
+  AppointmentCancelled: 'appointment.cancelled',
+  AppointmentCompleted: 'appointment.completed',
+
+  DocumentUploaded: 'document.uploaded',
+  DocumentReviewed: 'document.reviewed',
+
+  WellnessCheckinSubmitted: 'wellness.checkin_submitted',
+  WellnessCrisisDetected: 'wellness.crisis_detected',
+  AnonymousReportSubmitted: 'anon_report.submitted',
+
+  TutoringRequested: 'tutoring.requested',
+  TutoringMatched: 'tutoring.matched',
+  TutoringSessionCompleted: 'tutoring.session_completed',
+
+  StudyGroupCreated: 'study_group.created',
+  StudyGroupJoined: 'study_group.joined',
+  StudyGroupLeft: 'study_group.left',
+
+  ResourceBooked: 'resource.booked',
+  ResourceBookingCancelled: 'resource.booking_cancelled',
+
+  CourseEnrolled: 'course.enrolled',
+  CourseCompleted: 'course.completed',
+  CourseDropped: 'course.dropped',
+
+  TranscriptRequested: 'transcript.requested',
+  TranscriptDelivered: 'transcript.delivered',
+
+  StaffWorkloadAlert: 'staff.workload_alert',
 } as const;
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES] | `system.${string}`;
