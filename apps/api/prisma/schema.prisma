@@ -1,0 +1,774 @@
+// ============================================================================
+// MCG Student Services Portal — Prisma schema
+// Single canonical schema; all modules share this. Do not edit shipped
+// migrations; create a new migration for every change.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum SisSource {
+  campuslogin
+  salesforce
+}
+
+enum StudentStatus {
+  start
+  stay
+  at_risk
+  withdrawn
+  on_practicum
+  graduated
+  re_entry
+  alumni
+}
+
+enum UserRole {
+  rep
+  coordinator
+  manager
+  admin
+  auditor
+}
+
+enum CommunicationDirection {
+  inbound
+  outbound
+}
+
+enum CommunicationChannel {
+  email
+  sms
+  call
+  voicemail
+}
+
+enum TaskPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum TaskStatus {
+  open
+  in_progress
+  blocked
+  done
+  cancelled
+}
+
+enum CaseStatus {
+  open
+  in_progress
+  escalated
+  closed
+}
+
+enum InterventionType {
+  academic
+  attendance
+  personal
+}
+
+enum InterventionStatus {
+  assigned
+  in_progress
+  completed
+  abandoned
+}
+
+enum AccommodationStatus {
+  requested
+  approved
+  rejected
+  active
+  expired
+}
+
+enum AttendanceSource {
+  bbb
+  manual
+}
+
+enum NewsletterStatus {
+  scheduled
+  sent
+  failed
+}
+
+enum ReentryStatus {
+  active
+  completed
+  abandoned
+}
+
+enum PracticumStatus {
+  pending
+  active
+  completed
+  failed
+}
+
+// ----------------------------------------------------------------------------
+// Org / tenancy
+// ----------------------------------------------------------------------------
+
+model Entity {
+  id          String   @id @default(uuid()) @db.Uuid
+  external_id String   @unique
+  name        String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  campuses Campus[]
+  programs Program[]
+  students Student[]
+}
+
+model Campus {
+  id          String   @id @default(uuid()) @db.Uuid
+  external_id String   @unique
+  name        String
+  city        String
+  entity_id   String   @db.Uuid
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  entity   Entity    @relation(fields: [entity_id], references: [id])
+  students Student[]
+  programs Program[]
+
+  @@index([entity_id])
+}
+
+model Program {
+  id          String   @id @default(uuid()) @db.Uuid
+  external_id String   @unique
+  name        String
+  campus_id   String   @db.Uuid
+  entity_id   String   @db.Uuid
+  passing_grade Int    @default(70)
+  attendance_threshold Int @default(80)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  campus   Campus    @relation(fields: [campus_id], references: [id])
+  entity   Entity    @relation(fields: [entity_id], references: [id])
+  students Student[]
+
+  @@index([campus_id])
+}
+
+// ----------------------------------------------------------------------------
+// Identity & RBAC
+// ----------------------------------------------------------------------------
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  password_hash       String
+  first_name          String
+  last_name           String
+  role                UserRole
+  campus_ids          String[]  @db.Uuid
+  program_ids         String[]  @db.Uuid
+  entity_ids          String[]  @db.Uuid
+  is_active           Boolean   @default(true)
+  last_login_at       DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
+
+  refresh_tokens               RefreshToken[]
+  audit_log_entries            AuditLog[]
+  cases_assigned               Case[]            @relation("CaseAssignee")
+  interventions_owned          Intervention[]    @relation("InterventionOwner")
+  tasks_owned                  Task[]            @relation("TaskOwner")
+  students_as_pc               Student[]         @relation("CoordinatorAssignment")
+  students_as_rep              Student[]         @relation("RepAssignment")
+}
+
+model RefreshToken {
+  id            String   @id @default(uuid()) @db.Uuid
+  user_id       String   @db.Uuid
+  token_hash    String   @unique
+  expires_at    DateTime
+  revoked_at    DateTime?
+  created_at    DateTime @default(now())
+  user_agent    String?
+  ip_address    String?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+}
+
+// ----------------------------------------------------------------------------
+// Student aggregate
+// ----------------------------------------------------------------------------
+
+model Student {
+  id                                String        @id @default(uuid()) @db.Uuid
+  student_external_id               String        @unique
+  sis_source                        SisSource
+  first_name                        String
+  last_name                         String
+  email                             String
+  phone                             String?
+  dob                               DateTime      @db.Date
+  program_id                        String        @db.Uuid
+  campus_id                         String        @db.Uuid
+  entity_id                         String        @db.Uuid
+  intake_date                       DateTime      @db.Date
+  expected_graduation_date          DateTime?     @db.Date
+  practicum_start_date              DateTime?     @db.Date
+  status                            StudentStatus @default(start)
+  workflows_paused                  Boolean       @default(false)
+  assigned_program_coordinator_id   String?       @db.Uuid
+  assigned_student_services_rep_id  String?       @db.Uuid
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  // relations
+  program  Program @relation(fields: [program_id], references: [id])
+  campus   Campus  @relation(fields: [campus_id], references: [id])
+  entity   Entity  @relation(fields: [entity_id], references: [id])
+  coordinator User? @relation("CoordinatorAssignment", fields: [assigned_program_coordinator_id], references: [id])
+  rep         User? @relation("RepAssignment",         fields: [assigned_student_services_rep_id],  references: [id])
+
+  flags                       StudentFlags?
+  orientation_records         OrientationRecord[]
+  welcome_communications      WelcomeCommunication[]
+  moodle_enrollment_status    MoodleEnrollmentStatus?
+  post_orientation_surveys    PostOrientationSurvey[]
+  connect_room_assignments    ConnectRoomAssignment[]
+  student_leader_assignments  StudentLeaderAssignment[]
+  event_participation         EventParticipation[]
+  newsletter_deliveries       NewsletterDelivery[]
+  attendance_records          AttendanceRecord[]
+  grade_records               GradeRecord[]
+  withdrawal_records          WithdrawalRecord[]
+  risk_assessments            RiskAssessment[]
+  early_alerts                EarlyAlert[]
+  cases                       Case[]
+  interventions               Intervention[]
+  class_audits                ClassAudit[]
+  accommodation_requests      AccommodationRequest[]
+  reentry_plans               ReentryPlan[]
+  practicum_placements        PracticumPlacement[]
+  timeline_progress           StudentTimelineProgress[]
+  communications              Communication[]
+
+  @@unique([campus_id, email])
+  @@index([campus_id, status])
+  @@index([program_id])
+  @@index([entity_id])
+}
+
+model StudentFlags {
+  student_id                String   @id @db.Uuid
+  at_risk_flag              Boolean  @default(false)
+  re_entry_flag             Boolean  @default(false)
+  practicum_ready_flag      Boolean  @default(false)
+  completed_hours_flag      Boolean  @default(false)
+  orientation_complete_flag Boolean  @default(false)
+  risk_score                Int      @default(0)
+  engagement_score          Int      @default(0)
+  engagement_tier           String   @default("low")
+  last_recomputed_at        DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------------------------------
+// Universal: Audit, Events, Communications, Tasks
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  actor_id        String?  @db.Uuid
+  actor_label     String?
+  action          String
+  resource_type   String
+  resource_id     String?
+  before          Json?
+  after           Json?
+  outcome         String   @default("ok")
+  campus_id       String?  @db.Uuid
+  correlation_id  String?
+  occurred_at     DateTime @default(now())
+
+  actor User? @relation(fields: [actor_id], references: [id])
+
+  @@index([actor_id])
+  @@index([resource_type, resource_id])
+  @@index([occurred_at])
+}
+
+model EventStore {
+  event_id        String   @id @db.Uuid
+  event_type      String
+  student_id      String?  @db.Uuid
+  actor_id        String?
+  payload         Json
+  occurred_at     DateTime @default(now())
+  correlation_id  String
+
+  @@index([event_type])
+  @@index([student_id])
+  @@index([occurred_at])
+}
+
+model Communication {
+  id              String                 @id @default(uuid()) @db.Uuid
+  student_id      String?                @db.Uuid
+  actor_id        String?                @db.Uuid
+  direction       CommunicationDirection
+  channel         CommunicationChannel
+  from_address    String
+  to_address      String
+  subject         String?
+  body_or_summary String
+  external_id     String?
+  attachments_url String?
+  occurred_at     DateTime               @default(now())
+
+  student Student? @relation(fields: [student_id], references: [id], onDelete: SetNull)
+
+  @@index([student_id])
+  @@index([channel])
+  @@index([occurred_at])
+}
+
+model Task {
+  id              String       @id @default(uuid()) @db.Uuid
+  title           String
+  description     String?
+  source_event_id String?      @db.Uuid
+  student_id      String?      @db.Uuid
+  owner_user_id   String?      @db.Uuid
+  campus_id       String?      @db.Uuid
+  priority        TaskPriority @default(normal)
+  status          TaskStatus   @default(open)
+  due_at          DateTime?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  closed_at       DateTime?
+
+  owner User? @relation("TaskOwner", fields: [owner_user_id], references: [id])
+
+  @@index([owner_user_id, status])
+  @@index([student_id])
+}
+
+// ----------------------------------------------------------------------------
+// Module 1 — Intake & Onboarding
+// ----------------------------------------------------------------------------
+
+model OrientationRecord {
+  id            String    @id @default(uuid()) @db.Uuid
+  student_id    String    @db.Uuid
+  scheduled_at  DateTime
+  attended_at   DateTime?
+  missed        Boolean   @default(false)
+  notes         String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+model WelcomeCommunication {
+  id           String   @id @default(uuid()) @db.Uuid
+  student_id   String   @db.Uuid
+  template     String
+  channel      CommunicationChannel
+  sent_at      DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+model MoodleEnrollmentStatus {
+  student_id    String    @id @db.Uuid
+  enrolled      Boolean   @default(false)
+  enrolled_at   DateTime?
+  course_ids    String[]
+  last_activity DateTime?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+model PostOrientationSurvey {
+  id              String    @id @default(uuid()) @db.Uuid
+  student_id      String    @db.Uuid
+  sent_at         DateTime  @default(now())
+  submitted_at    DateTime?
+  reminders_sent  Int       @default(0)
+  responses       Json?
+  nps_score       Int?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+// ----------------------------------------------------------------------------
+// Module 2 — Engagement
+// ----------------------------------------------------------------------------
+
+model ConnectRoom {
+  id          String   @id @default(uuid()) @db.Uuid
+  campus_id   String   @db.Uuid
+  name        String
+  topic       String?
+  created_at  DateTime @default(now())
+
+  assignments ConnectRoomAssignment[]
+}
+
+model ConnectRoomAssignment {
+  id              String   @id @default(uuid()) @db.Uuid
+  student_id      String   @db.Uuid
+  connect_room_id String   @db.Uuid
+  assigned_at     DateTime @default(now())
+  active          Boolean  @default(true)
+
+  student      Student     @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  connect_room ConnectRoom @relation(fields: [connect_room_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+model StudentLeaderAssignment {
+  id            String   @id @default(uuid()) @db.Uuid
+  student_id    String   @db.Uuid
+  leader_user_id String  @db.Uuid
+  assigned_at   DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, leader_user_id])
+}
+
+model EventParticipation {
+  id            String   @id @default(uuid()) @db.Uuid
+  student_id    String   @db.Uuid
+  event_kind    String
+  event_ref     String?
+  attended_at   DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+model NewsletterDelivery {
+  id              String           @id @default(uuid()) @db.Uuid
+  student_id      String           @db.Uuid
+  newsletter_id   String
+  subject         String
+  status          NewsletterStatus @default(scheduled)
+  sent_at         DateTime?
+  opened_at       DateTime?
+  open_count      Int              @default(0)
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+  @@index([newsletter_id])
+}
+
+model EngagementScoreConfig {
+  id                              String   @id @default(uuid()) @db.Uuid
+  weight_event_attendance         Float    @default(0.30)
+  weight_newsletter_open          Float    @default(0.25)
+  weight_connect_room             Float    @default(0.25)
+  weight_outreach_response        Float    @default(0.20)
+  threshold_high                  Int      @default(70)
+  threshold_medium                Int      @default(40)
+  active                          Boolean  @default(true)
+  effective_at                    DateTime @default(now())
+}
+
+model StudentTimelineProgress {
+  id           String    @id @default(uuid()) @db.Uuid
+  student_id   String    @db.Uuid
+  step_key     String
+  scheduled_at DateTime
+  completed_at DateTime?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, step_key])
+  @@index([scheduled_at])
+}
+
+// ----------------------------------------------------------------------------
+// Module 3 — Early Alert & Risk
+// ----------------------------------------------------------------------------
+
+model RiskRuleConfig {
+  id                                   String   @id @default(uuid()) @db.Uuid
+  weight_grade_below_threshold         Int      @default(40)
+  weight_missing_grades_overdue        Int      @default(20)
+  weight_attendance_below_threshold    Int      @default(25)
+  weight_no_attendance_recorded        Int      @default(15)
+  weight_esl_below_threshold           Int      @default(10)
+  weight_age_gte_65                    Int      @default(10)
+  weight_withdrawal_initiated          Int      @default(50)
+  flag_threshold                       Int      @default(50)
+  active                               Boolean  @default(true)
+  effective_at                         DateTime @default(now())
+}
+
+model AttendanceRecord {
+  id          String           @id @default(uuid()) @db.Uuid
+  student_id  String           @db.Uuid
+  source      AttendanceSource
+  session_id  String
+  occurred_at DateTime
+  present     Boolean
+  raw         Json?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id, occurred_at])
+}
+
+model GradeRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  student_id      String   @db.Uuid
+  course_external_id String
+  assessment_id   String
+  value           Float
+  threshold       Float
+  recorded_at     DateTime
+  raw             Json?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id, recorded_at])
+}
+
+model WithdrawalRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  student_id      String   @db.Uuid
+  reason          String
+  requested_by    String?  @db.Uuid
+  initiated_at    DateTime @default(now())
+  confirmed_at    DateTime?
+  effective_date  DateTime?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+model RiskAssessment {
+  id            String   @id @default(uuid()) @db.Uuid
+  student_id    String   @db.Uuid
+  risk_score    Int
+  flagged       Boolean
+  top_factors   String[]
+  rule_versions String[]
+  computed_at   DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id, computed_at])
+}
+
+model EarlyAlert {
+  id          String   @id @default(uuid()) @db.Uuid
+  student_id  String   @db.Uuid
+  reason      String
+  severity    String
+  raised_at   DateTime @default(now())
+  cleared_at  DateTime?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+}
+
+model Case {
+  id              String     @id @default(uuid()) @db.Uuid
+  student_id      String     @db.Uuid
+  reason          String
+  status          CaseStatus @default(open)
+  assignee_id     String?    @db.Uuid
+  opened_at       DateTime   @default(now())
+  closed_at       DateTime?
+  resolution      String?
+  last_action_at  DateTime?
+  escalated_at    DateTime?
+
+  student   Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  assignee  User?   @relation("CaseAssignee", fields: [assignee_id], references: [id])
+
+  interventions Intervention[]
+
+  @@index([assignee_id, status])
+  @@index([student_id])
+}
+
+// ----------------------------------------------------------------------------
+// Module 4 — Academic Support
+// ----------------------------------------------------------------------------
+
+model InterventionPlaybook {
+  id            String           @id @default(uuid()) @db.Uuid
+  type          InterventionType
+  name          String
+  body_md       String
+  active        Boolean          @default(true)
+  created_at    DateTime         @default(now())
+  updated_at    DateTime         @updatedAt
+}
+
+model Intervention {
+  id            String             @id @default(uuid()) @db.Uuid
+  student_id    String             @db.Uuid
+  case_id       String?            @db.Uuid
+  type          InterventionType
+  playbook_id   String?            @db.Uuid
+  owner_id      String?            @db.Uuid
+  status        InterventionStatus @default(assigned)
+  outcome       String?
+  assigned_at   DateTime           @default(now())
+  completed_at  DateTime?
+
+  student  Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  case     Case?   @relation(fields: [case_id], references: [id], onDelete: SetNull)
+  owner    User?   @relation("InterventionOwner", fields: [owner_id], references: [id])
+
+  @@index([student_id])
+  @@index([owner_id, status])
+}
+
+model ClassAudit {
+  id            String    @id @default(uuid()) @db.Uuid
+  student_id    String?   @db.Uuid
+  class_ref     String
+  issues        String[]
+  resolution    String?
+  resolved_by   String?   @db.Uuid
+  due_at        DateTime?
+  logged_at     DateTime  @default(now())
+  resolved_at   DateTime?
+
+  student Student? @relation(fields: [student_id], references: [id], onDelete: SetNull)
+
+  @@index([class_ref])
+}
+
+model AccommodationRequest {
+  id            String              @id @default(uuid()) @db.Uuid
+  student_id    String              @db.Uuid
+  type          String
+  description   String
+  status        AccommodationStatus @default(requested)
+  requested_at  DateTime            @default(now())
+  approved_at   DateTime?
+  approved_by   String?             @db.Uuid
+  pandadoc_ref  String?
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+model ReentryPlan {
+  id              String         @id @default(uuid()) @db.Uuid
+  student_id      String         @db.Uuid
+  status          ReentryStatus  @default(active)
+  initiated_at    DateTime       @default(now())
+  completed_at    DateTime?
+  weeks_total     Int            @default(4)
+
+  student Student              @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  checks  ReentryWeeklyCheck[]
+}
+
+model ReentryWeeklyCheck {
+  id              String   @id @default(uuid()) @db.Uuid
+  reentry_plan_id String   @db.Uuid
+  week_n          Int
+  scheduled_at    DateTime
+  completed_at    DateTime?
+  summary         String?
+
+  plan ReentryPlan @relation(fields: [reentry_plan_id], references: [id], onDelete: Cascade)
+
+  @@unique([reentry_plan_id, week_n])
+}
+
+// ----------------------------------------------------------------------------
+// Module 5 — Practicum
+// ----------------------------------------------------------------------------
+
+model PracticumPlacement {
+  id           String          @id @default(uuid()) @db.Uuid
+  student_id   String          @db.Uuid
+  site_name    String
+  supervisor_id String?        @db.Uuid
+  start_date   DateTime
+  end_date     DateTime?
+  status       PracticumStatus @default(pending)
+  hours_target Int             @default(0)
+
+  student     Student              @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  supervisor  PracticumSupervisor? @relation(fields: [supervisor_id], references: [id])
+  hours_logs  PracticumHoursLog[]
+  evaluations PracticumEvaluation[]
+
+  @@index([student_id])
+}
+
+model PracticumSupervisor {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  email         String
+  phone         String?
+  organization  String
+  created_at    DateTime @default(now())
+
+  placements PracticumPlacement[]
+}
+
+model PracticumHoursLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  placement_id  String   @db.Uuid
+  occurred_on   DateTime @db.Date
+  hours         Float
+  notes         String?
+  approved      Boolean  @default(false)
+
+  placement PracticumPlacement @relation(fields: [placement_id], references: [id], onDelete: Cascade)
+}
+
+model PracticumEvaluation {
+  id            String   @id @default(uuid()) @db.Uuid
+  placement_id  String   @db.Uuid
+  evaluator     String
+  score         Int
+  comments      String?
+  evaluated_at  DateTime @default(now())
+
+  placement PracticumPlacement @relation(fields: [placement_id], references: [id], onDelete: Cascade)
+}
