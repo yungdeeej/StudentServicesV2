@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api.js';
+import { Card } from '../../components/ui/Card.js';
+import { Button } from '../../components/ui/Button.js';
+import { Field, Input, Textarea } from '../../components/ui/Input.js';
+import { Icon } from '../../components/ui/Icon.js';
+import { PageHeader } from '../../components/ui/PageHeader.js';
+import { EmptyState } from '../../components/ui/EmptyState.js';
+import { StatusBadge } from '../../components/ui/Badge.js';
+import { useToast } from '../../components/ui/Toast.js';
 
 type Req = {
   id: string;
@@ -12,6 +20,7 @@ type Req = {
 
 export function StudentTranscripts(): JSX.Element {
   const qc = useQueryClient();
+  const toast = useToast();
   const list = useQuery({
     queryKey: ['my-transcripts'],
     queryFn: () => api<{ items: Req[] }>('/api/v1/transcripts/me'),
@@ -30,62 +39,76 @@ export function StudentTranscripts(): JSX.Element {
       setEmail('');
       setNotes('');
       void qc.invalidateQueries({ queryKey: ['my-transcripts'] });
+      toast.success('Transcript request submitted', "We'll send you a release form to sign.");
     },
   });
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <h1 className="text-2xl font-semibold">Transcript requests</h1>
-      <p className="text-sm text-zinc-500">
-        Request an official transcript or program-completion verification. We'll email you a release
-        form to sign, then deliver to the recipient within 5 business days.
-      </p>
-      <div className="bg-surface border border-zinc-800 rounded-lg p-4 space-y-3">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Recipient name (e.g. employer or institution)"
-          className="w-full bg-bg border border-zinc-800 rounded px-3 py-2 text-sm"
+      <PageHeader
+        title="Transcript requests"
+        description="Send an official transcript or program-completion verification. Sign the release form, and we deliver within 5 business days."
+      />
+      <Card className="p-5 space-y-3">
+        <Field label="Recipient name" required>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Acme Hospital HR"
+          />
+        </Field>
+        <Field label="Recipient email" required>
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="hr@example.com"
+          />
+        </Field>
+        <Field label="Notes" hint="optional">
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Anything we should know?"
+          />
+        </Field>
+        <div className="flex justify-end">
+          <Button
+            onClick={() => submit.mutate()}
+            disabled={!name || !email}
+            loading={submit.isPending}
+            rightIcon={<Icon name="send" size={14} />}
+          >
+            Submit request
+          </Button>
+        </div>
+      </Card>
+
+      {list.data?.items.length === 0 ? (
+        <EmptyState
+          icon={<Icon name="page" size={20} />}
+          title="No transcript requests yet"
+          description="Once you submit a request you'll see its status here."
         />
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Recipient email"
-          className="w-full bg-bg border border-zinc-800 rounded px-3 py-2 text-sm"
-        />
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Notes (optional)"
-          rows={3}
-          className="w-full bg-bg border border-zinc-800 rounded px-3 py-2 text-sm"
-        />
-        <button
-          onClick={() => submit.mutate()}
-          disabled={!name || !email || submit.isPending}
-          className="bg-accent text-white rounded px-4 py-2 text-sm disabled:opacity-50"
-        >
-          Submit request
-        </button>
-      </div>
-      <div className="bg-surface border border-zinc-800 rounded-lg">
-        {list.data?.items.length === 0 ? (
-          <div className="p-6 text-sm text-zinc-500">No transcript requests yet.</div>
-        ) : (
-          <ul className="divide-y divide-zinc-800/60">
+      ) : (
+        <Card>
+          <ul className="divide-y divide-border">
             {list.data?.items.map((r) => (
-              <li key={r.id} className="p-4 text-sm">
-                <div className="font-medium">{r.recipient_name}</div>
-                <div className="text-xs text-zinc-500">{r.recipient_email}</div>
-                <div className="text-xs text-zinc-400 mt-1">
-                  {r.status} · {new Date(r.requested_at).toLocaleDateString()}
+              <li key={r.id} className="p-4 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">{r.recipient_name}</div>
+                  <div className="text-xs text-muted">{r.recipient_email}</div>
+                  <div className="text-[11px] text-muted mt-1">
+                    Requested {new Date(r.requested_at).toLocaleDateString()}
+                  </div>
                 </div>
+                <StatusBadge status={r.status} />
               </li>
             ))}
           </ul>
-        )}
-      </div>
+        </Card>
+      )}
     </div>
   );
 }

@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api.js';
+import { Card } from '../../components/ui/Card.js';
+import { Button } from '../../components/ui/Button.js';
+import { Field, Textarea } from '../../components/ui/Input.js';
+import { Icon } from '../../components/ui/Icon.js';
+import { PageHeader } from '../../components/ui/PageHeader.js';
+import { useToast } from '../../components/ui/Toast.js';
+import { cn } from '../../components/ui/cn.js';
 
 type Resource = { id: string; title: string; url: string | null; body_md: string | null };
 
@@ -10,8 +17,18 @@ type CheckinResp = {
   message: string;
 };
 
+const PHQ_OPTIONS = [
+  { v: 0, label: 'Not at all', emoji: '😌' },
+  { v: 1, label: 'Several days', emoji: '😐' },
+  { v: 2, label: 'More than half', emoji: '😕' },
+  { v: 3, label: 'Nearly every day', emoji: '😞' },
+];
+
+const STRESS_LABELS = ['😄', '😊', '🙂', '😐', '😕', '😟', '😣', '😖', '😫', '😩', '😱'];
+
 export function StudentWellness(): JSX.Element {
   const qc = useQueryClient();
+  const toast = useToast();
   const [phq2_q1, setQ1] = useState(0);
   const [phq2_q2, setQ2] = useState(0);
   const [stress, setStress] = useState(3);
@@ -37,107 +54,122 @@ export function StudentWellness(): JSX.Element {
     onSuccess: (data) => {
       setResult(data);
       void qc.invalidateQueries({ queryKey: ['student-tasks'] });
+      toast.success(
+        'Check-in submitted',
+        data.checkin.risk_tier === 'crisis' || data.checkin.risk_tier === 'high'
+          ? 'A counselor will be in touch.'
+          : 'Thanks for checking in with yourself.',
+      );
     },
+    onError: () => toast.error('Could not submit', 'Please try again.'),
   });
 
-  const phqOptions = [
-    { v: 0, label: 'Not at all' },
-    { v: 1, label: 'Several days' },
-    { v: 2, label: 'More than half the days' },
-    { v: 3, label: 'Nearly every day' },
-  ];
-
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-semibold">Wellness check-in</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Two quick questions about how you've felt over the last 2 weeks, plus a quick stress
-          rating. Your responses go to our counseling team — confidentially.
-        </p>
-      </div>
+    <div className="space-y-6 max-w-3xl">
+      <PageHeader
+        eyebrow="Confidential"
+        title="Wellness check-in"
+        description="Two quick questions about how you've felt over the last 2 weeks, plus a stress rating. Responses go to our counseling team — confidentially."
+      />
 
-      <div className="bg-surface border border-zinc-800 rounded-lg p-5 space-y-5">
-        <Question label="Little interest or pleasure in doing things" value={phq2_q1} setValue={setQ1} options={phqOptions} />
-        <Question label="Feeling down, depressed, or hopeless" value={phq2_q2} setValue={setQ2} options={phqOptions} />
+      <Card className="p-6 md:p-8 space-y-8">
         <div>
-          <label className="block text-sm font-medium mb-2">
-            How stressed do you feel right now? <span className="text-zinc-500">({stress}/10)</span>
-          </label>
+          <div className="text-sm font-medium mb-1">Over the last 2 weeks…</div>
+          <div className="text-xs text-muted mb-4">
+            Little interest or pleasure in doing things
+          </div>
+          <EmojiOptions value={phq2_q1} onChange={setQ1} />
+        </div>
+
+        <div>
+          <div className="text-xs text-muted mb-4">Feeling down, depressed, or hopeless</div>
+          <EmojiOptions value={phq2_q2} onChange={setQ2} />
+        </div>
+
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="text-sm font-medium">Stress level right now</div>
+            <div className="text-2xl">{STRESS_LABELS[stress] ?? '😐'}</div>
+          </div>
           <input
             type="range"
             min={0}
             max={10}
             value={stress}
             onChange={(e) => setStress(Number(e.target.value))}
-            className="w-full"
+            className="w-full accent-accent"
           />
+          <div className="flex justify-between text-[10px] text-muted mt-1">
+            <span>calm</span>
+            <span>{stress}/10</span>
+            <span>overwhelmed</span>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-2">Anything you'd like to share? (optional)</label>
-          <textarea
+
+        <Field label="Anything you'd like to share?" hint="Optional. Free text — we read every word.">
+          <Textarea
             value={free}
             onChange={(e) => setFree(e.target.value)}
             rows={4}
-            className="w-full bg-bg border border-zinc-800 rounded px-3 py-2 text-sm"
             placeholder="What's on your mind?"
           />
-        </div>
-        <button
+        </Field>
+
+        <Button
           onClick={() => submit.mutate()}
-          disabled={submit.isPending}
-          className="w-full bg-accent text-white rounded py-2 text-sm font-medium disabled:opacity-50"
+          loading={submit.isPending}
+          size="lg"
+          className="w-full"
+          rightIcon={<Icon name="arrowRight" size={16} />}
         >
-          {submit.isPending ? 'Submitting…' : 'Submit check-in'}
-        </button>
-      </div>
+          Submit check-in
+        </Button>
+      </Card>
 
       {result && (
-        <div
-          className={`bg-surface border rounded-lg p-5 ${
-            result.checkin.risk_tier === 'crisis'
-              ? 'border-danger'
-              : result.checkin.risk_tier === 'high'
-                ? 'border-warn'
-                : 'border-zinc-800'
-          }`}
+        <Card
+          className={cn(
+            'p-6 animate-in',
+            result.checkin.risk_tier === 'crisis' && 'border-danger',
+            result.checkin.risk_tier === 'high' && 'border-warn',
+          )}
         >
-          <div className="text-sm font-medium mb-2">Thanks for checking in</div>
-          <div className="text-sm text-zinc-300 whitespace-pre-wrap">{result.message}</div>
+          <div className="flex items-start gap-3">
+            <span
+              className={cn(
+                'w-10 h-10 rounded-lg grid place-items-center shrink-0',
+                result.checkin.risk_tier === 'crisis'
+                  ? 'bg-danger/15 text-danger'
+                  : result.checkin.risk_tier === 'high'
+                    ? 'bg-warn/15 text-warn'
+                    : 'bg-accent/15 text-accent',
+              )}
+            >
+              <Icon name="heart" size={20} />
+            </span>
+            <div className="flex-1">
+              <div className="text-sm font-medium">Thanks for checking in</div>
+              <div className="text-sm text-zinc-300 mt-2 leading-relaxed">{result.message}</div>
+            </div>
+          </div>
           {result.crisis_resources.length > 0 && (
-            <div className="mt-4 space-y-2">
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-2">
               {result.crisis_resources.map((r) => (
-                <a
-                  key={r.id}
-                  href={r.url ?? '#'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block bg-bg border border-zinc-800 rounded p-3 text-sm hover:border-accent"
-                >
-                  <div className="font-medium">{r.title}</div>
-                  {r.body_md && <div className="text-xs text-zinc-500 mt-1">{r.body_md}</div>}
-                </a>
+                <CrisisLink key={r.id} resource={r} />
               ))}
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {crisis.data && crisis.data.items.length > 0 && (
         <div>
-          <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Need help right now?</div>
+          <div className="text-[11px] uppercase tracking-widest text-muted mb-3">
+            Need help right now?
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {crisis.data.items.map((r) => (
-              <a
-                key={r.id}
-                href={r.url ?? '#'}
-                target="_blank"
-                rel="noreferrer"
-                className="block bg-surface border border-danger/40 rounded p-3 text-sm hover:bg-danger/5"
-              >
-                <div className="font-medium text-danger">{r.title}</div>
-                {r.body_md && <div className="text-xs text-zinc-400 mt-1">{r.body_md}</div>}
-              </a>
+              <CrisisLink key={r.id} resource={r} />
             ))}
           </div>
         </div>
@@ -146,36 +178,58 @@ export function StudentWellness(): JSX.Element {
   );
 }
 
-function Question({
-  label,
+function EmojiOptions({
   value,
-  setValue,
-  options,
+  onChange,
 }: {
-  label: string;
   value: number;
-  setValue: (v: number) => void;
-  options: Array<{ v: number; label: string }>;
+  onChange: (v: number) => void;
 }): JSX.Element {
   return (
-    <div>
-      <label className="block text-sm font-medium mb-2">{label}</label>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {options.map((o) => (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {PHQ_OPTIONS.map((o) => {
+        const active = value === o.v;
+        return (
           <button
             type="button"
             key={o.v}
-            onClick={() => setValue(o.v)}
-            className={`text-xs px-2 py-2 rounded border ${
-              value === o.v
-                ? 'border-accent bg-accent/15 text-accent'
-                : 'border-zinc-800 text-zinc-300 hover:border-zinc-700'
-            }`}
+            onClick={() => onChange(o.v)}
+            className={cn(
+              'p-4 rounded-xl border transition flex flex-col items-center gap-2 text-center',
+              active
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-border text-zinc-300 hover:border-border-strong hover:bg-surface-2',
+            )}
+            aria-pressed={active}
           >
-            {o.label}
+            <span className="text-2xl">{o.emoji}</span>
+            <span className="text-xs font-medium">{o.label}</span>
           </button>
-        ))}
-      </div>
+        );
+      })}
     </div>
+  );
+}
+
+function CrisisLink({ resource }: { resource: Resource }): JSX.Element {
+  return (
+    <a
+      href={resource.url ?? '#'}
+      target={resource.url?.startsWith('http') ? '_blank' : undefined}
+      rel="noreferrer"
+      className="block bg-surface border border-danger/30 rounded-xl p-4 hover:bg-danger/5 transition"
+    >
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-lg bg-danger/15 text-danger grid place-items-center shrink-0">
+          <Icon name="heart" size={16} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-danger">{resource.title}</div>
+          {resource.body_md && (
+            <div className="text-xs text-muted mt-1 line-clamp-2">{resource.body_md}</div>
+          )}
+        </div>
+      </div>
+    </a>
   );
 }

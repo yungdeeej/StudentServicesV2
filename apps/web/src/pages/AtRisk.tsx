@@ -1,5 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
+import { Card } from '../components/ui/Card.js';
+import { Skeleton } from '../components/ui/Spinner.js';
+import { PageHeader } from '../components/ui/PageHeader.js';
+import { EmptyState } from '../components/ui/EmptyState.js';
+import { Avatar } from '../components/ui/Avatar.js';
+import { Icon } from '../components/ui/Icon.js';
+import { cn } from '../components/ui/cn.js';
 
 type AtRiskStudent = {
   id: string;
@@ -18,32 +25,52 @@ export function AtRisk(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">At-Risk Students</h1>
-      {isLoading || !data ? (
-        <div className="h-64 bg-surface border border-zinc-800 rounded-lg animate-pulse" />
-      ) : data.items.length === 0 ? (
-        <div className="bg-surface border border-zinc-800 rounded-lg p-12 text-center">
-          <div className="text-4xl">🎉</div>
-          <div className="text-lg mt-2">No at-risk students this week</div>
-          <div className="text-sm text-zinc-500">Keep it up.</div>
-        </div>
+      <PageHeader
+        title="At-risk students"
+        description="Auto-flagged by the rules engine. Click into a student to see history and intervene."
+      />
+
+      {isLoading ? (
+        <Skeleton className="h-64" />
+      ) : data?.items.length === 0 ? (
+        <EmptyState
+          icon={<Icon name="check" size={20} />}
+          title="No at-risk students"
+          description="Nice work — everyone you're scoped to is in the green this week."
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data.items.map((s) => (
-            <div key={s.id} className="bg-surface border border-zinc-800 rounded-lg p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-medium">
-                    {s.first_name} {s.last_name}
+          {data?.items.map((s) => {
+            const score = s.flags.risk_score;
+            const tone = score >= 80 ? 'danger' : score >= 50 ? 'warn' : 'accent';
+            return (
+              <Card key={s.id} interactive className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar name={`${s.first_name} ${s.last_name}`} size="md" />
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">
+                        {s.first_name} {s.last_name}
+                      </div>
+                      <div className="text-xs text-muted truncate">
+                        {s.campus?.name} · {s.program?.name}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-zinc-500">
-                    {s.campus?.name} · {s.program?.name}
-                  </div>
+                  <span
+                    className={cn(
+                      'rounded-lg px-2.5 py-1 text-sm font-semibold',
+                      tone === 'danger' && 'bg-danger/15 text-danger',
+                      tone === 'warn' && 'bg-warn/15 text-warn',
+                      tone === 'accent' && 'bg-accent/15 text-accent',
+                    )}
+                  >
+                    {score}
+                  </span>
                 </div>
-                <div className="text-danger font-semibold">{s.flags.risk_score}</div>
-              </div>
-            </div>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

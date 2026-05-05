@@ -72,7 +72,9 @@ export function App(): JSX.Element {
         onNavigate={(p) => setStudentPage(p as StudentPage)}
         onLogout={() => auth.logout()}
       >
-        {studentPage === 's-dashboard' && <StudentDashboard />}
+        {studentPage === 's-dashboard' && (
+          <StudentDashboard onNavigate={(p) => setStudentPage(p as StudentPage)} />
+        )}
         {studentPage === 's-grades' && <StudentGrades />}
         {studentPage === 's-attendance' && <StudentAttendance />}
         {studentPage === 's-messages' && <StudentMessages />}

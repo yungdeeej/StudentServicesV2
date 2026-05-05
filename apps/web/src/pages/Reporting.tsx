@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
-import { Tile } from '../components/Tile.js';
+import { Stat } from '../components/ui/Stat.js';
+import { PageHeader } from '../components/ui/PageHeader.js';
+import { Button } from '../components/ui/Button.js';
+import { Icon } from '../components/ui/Icon.js';
+import { Card } from '../components/ui/Card.js';
 
 type Operational = {
   openCases: number;
@@ -17,19 +21,42 @@ export function Reporting(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Reporting</h1>
+      <PageHeader
+        title="Reporting"
+        description="Operational pulse + exports. PDF rendering uses Playwright print on the server."
+        action={
+          <a href="/api/v1/reporting/exports/students.csv">
+            <Button variant="secondary" leftIcon={<Icon name="external" size={14} />}>
+              Export students.csv
+            </Button>
+          </a>
+        }
+      />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Tile label="Open cases" value={data?.openCases ?? 0} />
-        <Tile label="Escalations" value={data?.escalations ?? 0} tone="danger" />
-        <Tile label="Open interventions" value={data?.openInterventions ?? 0} />
-        <Tile label="Open tasks" value={data?.openTasks ?? 0} />
+        <Stat label="Open cases" value={data?.openCases ?? 0} icon={<Icon name="clipboard" size={16} />} />
+        <Stat
+          label="Escalations"
+          value={data?.escalations ?? 0}
+          tone="danger"
+          icon={<Icon name="alert" size={16} />}
+        />
+        <Stat
+          label="Open interventions"
+          value={data?.openInterventions ?? 0}
+          icon={<Icon name="spark" size={16} />}
+        />
+        <Stat label="Open tasks" value={data?.openTasks ?? 0} icon={<Icon name="bell" size={16} />} />
       </div>
-      <a
-        href="/api/v1/reporting/exports/students.csv"
-        className="inline-block bg-accent/20 text-accent px-4 py-2 rounded text-sm"
-      >
-        Export students.csv
-      </a>
+
+      <Card className="p-6">
+        <div className="text-sm font-medium mb-1">More dashboards</div>
+        <p className="text-sm text-muted">
+          KPI overview, operational, surveys, and the engagement heatmap all live behind
+          <code className="text-zinc-300 mx-1">/api/v1/reporting/kpi/*</code> — wire them into your
+          BI tool of choice.
+        </p>
+      </Card>
     </div>
   );
 }

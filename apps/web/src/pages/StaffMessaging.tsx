@@ -1,5 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
+import { Card } from '../components/ui/Card.js';
+import { PageHeader } from '../components/ui/PageHeader.js';
+import { EmptyState } from '../components/ui/EmptyState.js';
+import { Avatar } from '../components/ui/Avatar.js';
+import { Skeleton } from '../components/ui/Spinner.js';
+import { Badge } from '../components/ui/Badge.js';
+import { Icon } from '../components/ui/Icon.js';
 
 type Thread = {
   id: string;
@@ -19,35 +26,41 @@ export function StaffMessaging(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Messages</h1>
+      <PageHeader title="Inbox" description="Conversations from students you're scoped to." />
       {isLoading ? (
-        <div className="h-64 bg-surface rounded-lg animate-pulse" />
+        <Skeleton className="h-64" />
+      ) : data?.items.length === 0 ? (
+        <EmptyState icon={<Icon name="message" size={20} />} title="Inbox empty" description="When a student messages you, it'll show here." />
       ) : (
-        <div className="bg-surface border border-zinc-800 rounded-lg">
-          {data?.items.length === 0 ? (
-            <div className="p-6 text-sm text-zinc-500">Inbox empty.</div>
-          ) : (
-            <ul className="divide-y divide-zinc-800/60">
-              {data?.items.map((t) => (
-                <li key={t.id} className="p-4 flex items-start justify-between">
-                  <div>
-                    <div className="font-medium flex items-center gap-2">
-                      {t.confidential && <span className="text-xs text-warn">🔒 confidential</span>}
-                      {t.subject}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {t.student.first_name} {t.student.last_name} · {t._count.messages} message
-                      {t._count.messages === 1 ? '' : 's'}
-                    </div>
+        <Card>
+          <ul className="divide-y divide-border">
+            {data?.items.map((t) => (
+              <li key={t.id} className="p-4 flex items-center gap-4 hover:bg-surface-2/40 transition">
+                <Avatar name={`${t.student.first_name} ${t.student.last_name}`} size="md" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {t.confidential && (
+                      <span className="text-warn" title="Confidential">
+                        <Icon name="shield" size={12} />
+                      </span>
+                    )}
+                    <div className="font-medium truncate">{t.subject}</div>
                   </div>
-                  <div className="text-xs text-zinc-500">
+                  <div className="text-xs text-muted mt-0.5">
+                    {t.student.first_name} {t.student.last_name} · {t._count.messages} message
+                    {t._count.messages === 1 ? '' : 's'}
+                  </div>
+                </div>
+                <div className="text-right">
+                  {t.status !== 'open' && <Badge tone="neutral">{t.status}</Badge>}
+                  <div className="text-[11px] text-muted mt-1">
                     {t.last_message_at ? new Date(t.last_message_at).toLocaleString() : '—'}
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
     </div>
   );
